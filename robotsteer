@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+from ev3dev2.motor import LargeMotor, MoveTank, OUTPUT_A, OUTPUT_B
+from ev3dev2.sensor import INPUT_3
+from ev3dev2.sensor.lego import GyroSensor
+import time
+
+# --- Hardware setup ---
+tank_drive       = MoveTank(OUTPUT_A, OUTPUT_B)
+gyro_sensor_in3  = GyroSensor(INPUT_3)
+
+# --- Robot dimensions ---
+WHEEL_DIAMETER = 5.6   # cm
+WHEEL_SPACING  = 15.2  # cm
+
+# --- PID turn function ---
+def pid_turn(target_angle):
+    Kp = 4.0
+    Ki = 0.2
+    Kd = 0.08
+    DEADBAND   = 1
+    BASE_POWER = 20
+    MAX_POWER  = 80
+
+    error_sum  = 0
+    last_error = 0
+    last_time  = time.time()
+
+    print("Turning to", target_angle, "degrees")
+
+    while True:
+        now  = time.time()
+        dt   = max(now - last_time, 0.001)
+        last_time = now
+
+        current_angle = gyro_sensor_in3.angle
+        error         = target_angle - current_angle
+
+        error_sum  = max(min(error_sum + error * dt, 50), -50)
+        derivative = (error - last_error) / dt
+        last_error = error
+
+        output = (Kp * error) + (Ki * error_sum) + (Kd * derivative)
+
+        if abs(error) < DEADBAND:
+            tank_drive.on(0, 0)
+            print("Done! Final angle:", gyro_sensor_in3.angle)
+            break
+
+        speed = int(max(min(abs(output) + BASE_POWER, MAX_POWER), BASE_POWER))
+        pwr   = speed if output > 0 else -speed
+
+        tank_drive.on(pwr, -pwr)   # left, right
+        time.sleep(0.02)
+
+# --- Run it ---
+pid_turn(90)
